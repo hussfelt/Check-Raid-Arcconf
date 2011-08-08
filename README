@@ -1,0 +1,14 @@
+This plugin will check the status of a local Adaptec AAC-RAID.
+It will provide what type of errors that has ouccured count them and output an error row.
+Depending on user settings in -w and -c giving WARNING and CRITICAL message at different points.
+
+Based on script by M.Koettenstorfer
+https://www.monitoringexchange.org/inventory/Check-Plugins/Hardware/Devices/RAID-Controller/check_arcconf---Adaptec-AAC-RAID
+Made some bugfixes and small changes.
+
+Released under GNU/GPL v3 by request from author.
+
+Changelog:
+
+2011-08-08 - Cleanup
+-Cleanup code

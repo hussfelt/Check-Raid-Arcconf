@@ -1,0 +1,141 @@
+#!/bin/bash
+# Adaptec AAC-RAID  plugin for Nagios
+# Written by M.Koettenstorfer (mko@lihas.de)
+# Modified by Henrik Hussfelt (henrik.hussfelt@assignme.com)
+# Last Modified: 2011-06-02
+
+# Description:
+#
+# This plugin will check the status of a local
+# Adaptec AAC-RAID. It will provide what type of errors that has ouccured
+# count them and output an error row.
+# Depending on user settings in -w and -c giving WARNING and CRITICAL
+# message at different points
+#
+# where arcconf lives 
+RUNARCONF="/usr/StorMan/arcconf"
+ARCONFLISTSTATE="$RUNARCONF GETLOGS 1 DEVICE tabular"
+
+# Nagios return codes
+STATE_OK=0
+STATE_WARNING=1
+STATE_CRITICAL=2
+STATE_UNKNOWN=3
+STATE_DEPENDENT=4
+
+if [ ! -x "$RUNARCONF" ]
+then
+	echo "UNKNOWN: $ARCONFLISTSTATE not found or is not executable by the nagios user"
+	exitstatus=$STATE_UNKNOWN
+	exit $exitstatus
+fi
+
+PROGNAME=`basename $0`
+
+print_usage() {
+	echo "Usage: $PROGNAME SOME OPTIONS>"
+	echo ""
+	echo "Notes:"
+	echo "-w: WARNING level for errors"
+	echo "-c: CRITICAL level for errors"
+	echo ""
+}
+
+print_help() {
+	print_usage
+	echo ""
+	echo "This plugin will check the howmany errors happend on Raid Controller."
+	echo ""
+	exit 0
+}
+
+
+
+check_error_count()
+{
+                if [ "$allerrors" -ge "$critlevel" ]
+                then
+                        MESSAGE="RAID CRITICAL, $numParityErrors numParityErrors, $hwErrors hwErrors, $mediumErrors mediumErrors"
+                        exitstatus=$STATE_CRITICAL
+                elif [ "$allerrors" -ge "$warnlevel" ]
+                then
+                        MESSAGE="RAID WARNING, $numParityErrors numParityErrors, $hwErrors hwErrors, $mediumErrors mediumErrors"
+                        exitstatus=$STATE_WARNING
+                else
+                        MESSAGE="RAID OK, $numParityErrors numParityErrors, $hwErrors hwErrors, $mediumErrors mediumErrors"
+                        exitstatus=$STATE_OK
+		fi 
+}
+
+if [ $# -lt 4 ]; then
+	print_usage
+	exit $STATE_UNKNOWN
+fi
+
+exitstatus=$STATE_UNKNOWN #default
+
+while test -n "$1"; do
+	case "$1" in
+		--help)
+			print_help
+			exit $STATE_OK
+			;;
+		-h)
+			print_help
+			exit $STATE_OK
+			;;
+		-w)
+			warnlevel=$2
+			shift
+			;;
+		-c)	
+			critlevel=$2
+			shift
+			;;
+	esac
+	shift
+done
+
+# Check arguments for validity
+if [ $warnlevel -gt $critlevel ] # Do the warn/crit values make sense?
+then	
+	echo "CRITICAL value of $critlevel less than WARNING level of $warnlevel"
+	print_usage
+	exitstatus=$STATE_UNKNOWN
+	exit $exitstatus
+elif [ -n $library ]
+then
+
+	TMP=`mktemp numerrors.XXXXXX` # Create a tmpfile to store the full test result
+	HTMP=`mktemp hwerrors.XXXXXX` # Create a tmpfile to store the full test result
+	MTMP=`mktemp mediumerrors.XXXXXX` # Create a tmpfile to store the full test result
+	$ARCONFLISTSTATE | grep Err | grep -v smart | grep -v drive | grep numParityErrors| awk '{print $3}' > $TMP 
+	$ARCONFLISTSTATE | grep Err | grep -v smart | grep -v drive | grep hwErrors | awk '{print $3}' > $HTMP 
+	$ARCONFLISTSTATE | grep Err | grep -v smart | grep -v drive | grep mediumErrors | awk '{print $3}' > $MTMP 
+
+	numParityErrors=`a=$(cat $TMP) ; echo $a | tr ' ' '+'| bc`
+	hwErrors=`a=$(cat $HTMP) ; echo $a | tr ' ' '+'| bc`
+	mediumErrors=`a=$(cat $MTMP) ; echo $a | tr ' ' '+'| bc`
+
+	# Fix if error on empty non-integer strings
+	if [[ $numParityErrors != [0-9]* ]]; then
+		numParityErrors=`echo 0`;
+	fi;
+	if [[ $hwErrors != [0-9]* ]]; then
+		let hwErrors=`echo 0`;
+	fi;
+	if [[ $mediumErrors != [0-9]* ]]; then
+		let mediumErrors=`echo 0`;
+	fi;
+
+	allerrors=`echo "$numParityErrors + $hwErrors + $mediumErrors" | bc`
+
+		check_error_count
+	
+	rm -rf $TMP
+	rm -rf $HTMP
+	rm -rf $MTMP
+fi
+
+echo $MESSAGE
+exit $exitstatus
